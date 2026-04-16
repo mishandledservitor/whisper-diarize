@@ -2,7 +2,7 @@
 
 > Speech-to-text with speaker diarization, fully offline. WhisperX + pyannote 3.1.
 
-**Version 1.0.0** | [Changelog](CHANGELOG.md)
+**Version 1.0.1** | [Changelog](CHANGELOG.md) | [License](LICENSE) | Part of [VoxBox](https://github.com/mishandledservitor/voxbox)
 
 ```
 whisper-diarize/
@@ -208,9 +208,43 @@ PyTorch 2.4+ dropped Intel Mac support. The setup pins `torch==2.2.2` deliberate
 ### "OpenMP runtime is already initialized" warning
 Harmless. Set `KMP_DUPLICATE_LIB_OK=TRUE` in your shell to silence it.
 
+### `RuntimeError: Numpy is not available` from `torch` or `asteroid_filterbanks`
+This is the dependency conflict fixed in 1.0.1 — `torch==2.2.2` (Intel Mac) is incompatible with `numpy>=2`. The setup script handles this by force-reinstalling `numpy==1.26.4` last. If you hit this error after a manual install, run:
+
+```bash
+source venv/bin/activate
+pip install numpy==1.26.4 --force-reinstall
+```
+
+The pip conflict warning is expected — it works correctly at runtime.
+
+---
+
+## File Manifest
+
+| File / Directory | Purpose | Size |
+|------------------|---------|------|
+| `whisper_diarize_local.py` | WhisperX + pyannote pipeline (~684 lines) | — |
+| `setup_whisper_diarize.sh` | Installer (Python 3.10 venv, PyTorch 2.2.2, pyannote, whisperx, model download) | — |
+| `uninstall_whisper_diarize.sh` | Interactive cleanup with confirmation prompts | — |
+| `whisper-diarize` | Generated bash launcher (activates venv, runs Python script) | — |
+| `inbox/` | Drop audio files here for batch processing | — |
+| `output/` | Diarized transcripts saved here | — |
+| `processed/` | Originals moved here after success | — |
+| `.hf_token` | Hugging Face token (chmod 600, not tracked) | — |
+| `venv/` | Isolated Python 3.10 environment | ~2.5 GB |
+| `.gitignore` | Git ignore rules | — |
+| `README.md` | This documentation | — |
+| `CHANGELOG.md` | Version history | — |
+| `VERSION` | Current version number | — |
+| `LICENSE` | MIT license + upstream attribution | — |
+
+The Whisper `medium` model (~1.5 GB) is cached in `~/.cache/huggingface/hub/` and shared across any project using HuggingFace. Same for the pyannote 3.1 model (~30 MB).
+
 ---
 
 ## License
 
-MIT — same as voxbox.
-Whisper, WhisperX, and pyannote each carry their own licenses; check their repos for details.
+MIT — see [LICENSE](LICENSE) for the full text and upstream attribution.
+
+The diarization model (`pyannote/speaker-diarization-3.1`) is gated and carries its own Creative Commons license requiring attribution. See https://huggingface.co/pyannote/speaker-diarization-3.1 for terms.

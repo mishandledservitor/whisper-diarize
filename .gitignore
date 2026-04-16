@@ -1,8 +1,28 @@
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
 venv/
 whisper-diarize
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local environment
+.env
+.envrc
 
 # Hugging Face token (never commit)
 .hf_token
