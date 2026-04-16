@@ -1,0 +1,16 @@
+.DS_Store
+venv/
+whisper-diarize
+__pycache__/
+*.pyc
+
+# Hugging Face token (never commit)
+.hf_token
+
+# Drop-folder contents (keep dirs, ignore files)
+inbox/*
+output/*
+processed/*
+!inbox/.gitkeep
+!output/.gitkeep
+!processed/.gitkeep
