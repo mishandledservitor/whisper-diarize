@@ -97,12 +97,22 @@ echo "   📦 Installing PyTorch 2.2.2 (CPU, $ARCH)..."
 # 2.2.2 is the last version with reliable Intel Mac support; works on Apple Silicon too.
 pip install -q "torch==2.2.2" "torchaudio==2.2.2"
 
+echo "   📦 Installing transformers (pinned <4.44 for torch 2.2.2 compatibility)..."
+pip install -q "transformers>=4.27,<4.44"
+
 echo "   📦 Installing WhisperX + pyannote.audio..."
 pip install -q "pyannote.audio==3.1.1"
 pip install -q "whisperx"
 
 echo "   📦 Installing audio I/O helpers..."
-pip install -q soundfile numpy
+pip install -q soundfile matplotlib
+
+# Force-lock numpy to 1.26.4 — must happen AFTER all other packages are installed.
+# Various packages in the ecosystem declare numpy>=2 requirements, but torch 2.2.2
+# was compiled against numpy 1.x. Force the downgrade last so nothing overrides it.
+# pyannote-core and other packages will warn about the conflict but work correctly.
+echo "   📦 Force-locking numpy to 1.26.4 (torch 2.2.2 / Intel Mac requirement)..."
+pip install -q "numpy==1.26.4" --force-reinstall
 
 # ── 5. HF token bootstrap ───────────────────────────────────────────────────
 echo ""
