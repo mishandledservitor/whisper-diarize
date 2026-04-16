@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import sys
@@ -23,6 +24,72 @@ import time
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# Lightning prints a chatty INFO line every time it auto-upgrades a checkpoint
+# saved by an older version of itself ("Lightning automatically upgraded your
+# loaded checkpoint from v1.5.4 to v2.6.1..."). The upgrade is in-memory only
+# and works fine — the message is pure noise.
+#
+# Suppression needs two pieces:
+# 1. A filter attached to the specific module logger that emits the line
+#    (filters attached to *parent* loggers don't apply during propagation,
+#    only to records originating from that exact logger).
+# 2. A filter attached to every handler on the root logger as a fallback —
+#    handler-level filters DO apply during propagation, so this catches the
+#    record even if the message ever moves to a different Lightning module.
+# Loggers are singletons by name, so creating them here means Lightning reuses
+# the same instances (with our filter attached) when it imports later.
+class _DropLightningUpgradeMessage(logging.Filter):
+    def filter(self, record):
+        try:
+            return "automatically upgraded your loaded checkpoint" not in record.getMessage()
+        except Exception:
+            return True
+
+_upgrade_filter = _DropLightningUpgradeMessage()
+for _name in (
+    "pytorch_lightning.utilities.migration.utils",
+    "pytorch_lightning.utilities.migration",
+    "lightning_fabric.utilities.migration.utils",
+    "lightning_fabric.utilities.migration",
+):
+    logging.getLogger(_name).addFilter(_upgrade_filter)
+# Fallback: attach to existing root handlers. Lightning's logger propagates up
+# to root, so this catches anything that slipped through the per-module filters.
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_upgrade_filter)
+
+# Also bump Lightning loggers down a level — catches other low-priority noise
+# without hiding real errors. Both namespaces exist because Lightning split
+# into pytorch_lightning + lightning_fabric in recent versions.
+for _name in ("pytorch_lightning", "lightning_fabric", "lightning"):
+    logging.getLogger(_name).setLevel(logging.ERROR)
+
+# ── Threading fixes for Intel macOS ─────────────────────────────────────────
+#
+# whisperx + pyannote + torch 2.2.2 on Intel Mac is fragile. Three things go
+# wrong without these env vars:
+#
+# 1. Multiple OpenMP runtimes (MKL ships libiomp5, torch ships libomp). When
+#    both load, they fight for the same thread pool and either deadlock at
+#    0% CPU or segfault. KMP_DUPLICATE_LIB_OK=TRUE lets them coexist.
+# 2. Forked workers from faster-whisper / pyannote inherit a half-warm thread
+#    state from the parent, causing hangs at 0% CPU.
+# 3. CTranslate2 (the engine inside faster-whisper) segfaults in its language-
+#    detection step whenever OMP_NUM_THREADS > 1 on this stack. Empirically
+#    verified on 2018 Intel MBP / macOS Sequoia / Python 3.10 / torch 2.2.2.
+#
+# OMP_NUM_THREADS=1 is therefore REQUIRED, not advisory — bumping it WILL
+# segfault. The cost is ~5–10× audio-duration on the diarize step. If you
+# want speed, run on Apple Silicon or a CUDA box instead.
+#
+# These MUST be set before any torch/numpy/faster-whisper import.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 # ── Model catalog ───────────────────────────────────────────────────────────
 
@@ -194,7 +261,11 @@ def load_models(model_name, hf_token, language=None):
     """Load WhisperX ASR model, alignment model, and diarization pipeline."""
     print(f"⏳ Loading WhisperX model ({model_name})...")
     start = time.time()
+    import torch
     import whisperx
+    # Pin torch thread count to match the OMP env vars set at module import.
+    # Avoids cache contention from oversubscription on multi-core Intel CPUs.
+    torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "4")))
 
     asr = whisperx.load_model(
         model_name,
